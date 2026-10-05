@@ -10,6 +10,8 @@ export interface RegistryEntry {
   config_entry_id: string | null;
   platform?: string;
   device_id?: string | null;
+  area_id?: string | null;
+  disabled_by?: string | null;
   translation_key?: string;
   unique_id?: string;
 }

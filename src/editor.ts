@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit";
+import { playerIdsInArea } from "./area";
 import { buildConfig, CARD_TYPE } from "./config";
 import type {
   CardConfig,
@@ -12,6 +13,9 @@ export class MusicAssistantEditor extends LitElement {
   hass?: Hass;
   private config: CardConfig = { type: CARD_TYPE, entities: [] };
   private error = "";
+  private selectedArea = "";
+  private selectedPlayers: string[] = [];
+  private addingPlayers = false;
   static styles = css`
     :host {
       display: block;
@@ -42,7 +46,6 @@ export class MusicAssistantEditor extends LitElement {
     }
     input,
     select,
-    ha-entity-picker,
     button {
       font: inherit;
       color: inherit;
@@ -53,6 +56,12 @@ export class MusicAssistantEditor extends LitElement {
       padding: 8px;
       width: 100%;
     }
+    ha-entity-picker,
+    ha-selector {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
     button {
       cursor: pointer;
       width: auto;
@@ -61,6 +70,14 @@ export class MusicAssistantEditor extends LitElement {
     input[type="checkbox"] {
       min-height: 24px;
       width: 24px;
+    }
+    input[type="range"] {
+      border: 0;
+      padding: 0;
+    }
+    .player-id {
+      font-weight: 600;
+      overflow-wrap: anywhere;
     }
     .check {
       flex-direction: row;
@@ -163,24 +180,117 @@ export class MusicAssistantEditor extends LitElement {
       ),
     });
   }
+  private async addPlayers() {
+    if (this.addingPlayers) return;
+    const selected = [...this.selectedPlayers];
+    const area = this.selectedArea;
+    if (!selected.length && !area) return;
+    this.addingPlayers = true;
+    this.error = "";
+    this.requestUpdate();
+    try {
+      let ids = selected;
+      if (!ids.length) {
+        if (!this.hass) throw new Error("Home Assistant is not connected.");
+        const [entities, devices] = await Promise.all([
+          this.hass.callWS<unknown>({ type: "config/entity_registry/list" }),
+          this.hass.callWS<unknown>({ type: "config/device_registry/list" }),
+        ]);
+        ids = playerIdsInArea(area, entities, devices, this.hass.states);
+        if (!ids.length)
+          throw new Error("No player entities were found in this area.");
+      }
+      const existing = this.entities();
+      const existingIds = new Set(existing.map((entity) => entity.entity_id));
+      const additions = [...new Set(ids)]
+        .filter((id) => !existingIds.has(id))
+        .map((entity_id) => ({ entity_id }));
+      if (!additions.length)
+        throw new Error("These players are already configured.");
+      this.updateConfig({ entities: [...existing, ...additions] });
+      this.selectedArea = "";
+      this.selectedPlayers = [];
+    } catch (error) {
+      this.error =
+        error instanceof Error ? error.message : "Could not add players.";
+    } finally {
+      this.addingPlayers = false;
+      this.requestUpdate();
+    }
+  }
   protected render() {
     const entities = this.entities();
     return html`<p>
-        Choose Music Assistant player entities. Changes apply once all fields
-        are valid.
+        Choose an area or one or more player entities to add rooms.
       </p>
-      ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ""}${entities.map(
+      ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ""}
+      <fieldset>
+        <legend>Add players</legend>
+        <div class="grid">
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ area: {} }}
+            .value=${this.selectedArea || undefined}
+            .label=${"Area"}
+            .required=${false}
+            @value-changed=${(event: CustomEvent<{ value?: string }>) => {
+              this.selectedArea = event.detail.value ?? "";
+              this.requestUpdate();
+            }}
+          ></ha-selector>
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ entity: { filter: { domain: "media_player" }, multiple: true } }}
+            .value=${this.selectedPlayers}
+            .label=${"Player entities"}
+            .required=${false}
+            @value-changed=${(event: CustomEvent<{ value?: string[] }>) => {
+              this.selectedPlayers = Array.isArray(event.detail.value)
+                ? event.detail.value
+                : [];
+              this.requestUpdate();
+            }}
+          ></ha-selector>
+        </div>
+        <p>
+          Selected players take priority. Leave them empty to add every player
+          in the area.
+        </p>
+        <button
+          ?disabled=${this.addingPlayers || (!this.selectedArea && !this.selectedPlayers.length)}
+          @click=${this.addPlayers}
+        >
+          ${this.addingPlayers ? "Adding…" : "Add players"}
+        </button>
+      </fieldset>
+      ${entities.map(
         (entity, i) =>
           html`<fieldset>
-            <legend>Room ${i + 1}</legend>
+            <legend>
+              Room ${i + 1}:
+              ${entity.name || this.hass?.states[entity.entity_id]?.attributes.friendly_name || entity.entity_id}
+            </legend>
             <div class="grid">
-              ${this.entityPicker("Player entity", entity.entity_id, ["media_player"], (v) => this.entity(i, { entity_id: v }))}${this.textField("Room name", entity.name ?? "", (v) => this.entity(i, { name: v }))}${this.entityPicker("Volume entity", entity.volume_entity, ["media_player"], (v) => this.entity(i, { volume_entity: v || undefined }))}${this.entityPicker("Favorite button entity", entity.favorite_entity, ["button"], (v) => this.entity(i, { favorite_entity: v || undefined }))}${this.textField("Integration entry ID", entity.config_entry_id ?? "", (v) => this.entity(i, { config_entry_id: v }))}<label
-                >Maximum volume (%)<input
-                  aria-label="Maximum volume (%)"
-                  type="number"
+              <p class="player-id">${entity.entity_id}</p>
+              ${this.textField("Room name", entity.name ?? "", (v) => this.entity(i, { name: v }))}${this.entityPicker("Volume entity", entity.volume_entity, ["media_player"], (v) => this.entity(i, { volume_entity: v || undefined }))}${this.entityPicker("Favorite button entity", entity.favorite_entity, ["button"], (v) => this.entity(i, { favorite_entity: v || undefined }))}${this.textField("Integration entry ID", entity.config_entry_id ?? "", (v) => this.entity(i, { config_entry_id: v }))}<label
+                ><span
+                  >Maximum volume:
+                  <output id=${`max-volume-${i}`}
+                    >${entity.max_volume ?? 100}%</output
+                  ></span
+                ><input
+                  aria-label=${`Maximum volume for ${entity.name || entity.entity_id}`}
+                  type="range"
                   min="0"
                   max="100"
                   .value=${String(entity.max_volume ?? 100)}
+                  @input=${(event: Event) => {
+                    const input = event.target as HTMLInputElement;
+                    const output = this.shadowRoot?.getElementById(
+                      `max-volume-${i}`,
+                    );
+                    if (output) output.textContent = `${input.value}%`;
+                  }}
                   @change=${(e: Event) => this.entity(i, { max_volume: Number((e.target as HTMLInputElement).value) })}
               /></label>
             </div>
@@ -208,19 +318,7 @@ export class MusicAssistantEditor extends LitElement {
               Remove room
             </button>
           </fieldset>`,
-      )}<button
-        @click=${() => {
-          const next =
-            Object.keys(this.hass?.states ?? {}).find(
-              (id) =>
-                id.startsWith("media_player.") &&
-                !entities.some((e) => e.entity_id === id),
-            ) ?? "";
-          this.updateConfig({ entities: [...entities, { entity_id: next }] });
-        }}
-      >
-        Add room
-      </button>
+      )}
       <div class="grid">
         ${this.entityPicker("Default player", this.config.default_player, ["media_player"], (v) => this.updateConfig({ default_player: v || undefined }), entities.map((e) => e.entity_id).filter(Boolean))}${this.select("Layout", this.config.layout ?? "auto", ["auto", "compact", "standard", "expanded"], (v) => this.updateConfig({ layout: v as CardConfig["layout"] }))}${this.select("Artwork size", this.config.artwork_size ?? "medium", ["small", "medium", "large"], (v) => this.updateConfig({ artwork_size: v as CardConfig["artwork_size"] }))}${this.select("Queue extension", this.config.extension ?? "auto", ["auto", "off"], (v) => this.updateConfig({ extension: v as CardConfig["extension"] }))}${this.textField("Default integration entry ID", this.config.config_entry_id ?? "", (v) => this.updateConfig({ config_entry_id: v || undefined }))}
       </div>
