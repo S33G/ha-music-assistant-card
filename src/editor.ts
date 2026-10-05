@@ -42,6 +42,7 @@ export class MusicAssistantEditor extends LitElement {
     }
     input,
     select,
+    ha-entity-picker,
     button {
       font: inherit;
       color: inherit;
@@ -112,15 +113,32 @@ export class MusicAssistantEditor extends LitElement {
     label: string,
     value: string,
     onChange: (s: string) => void,
-    list?: string,
   ) {
     return html`<label
       >${label}<input
         aria-label=${label}
         .value=${value}
-        list=${list ?? ""}
         @change=${(e: Event) => onChange((e.target as HTMLInputElement).value)}
     /></label>`;
+  }
+  private entityPicker(
+    label: string,
+    value: string | undefined,
+    domains: string[],
+    onChange: (entityId: string) => void,
+    allowedEntities?: string[],
+  ) {
+    return html`<label class="entity-picker"
+      >${label}<ha-entity-picker
+        .hass=${this.hass}
+        .label=${label}
+        .value=${value || undefined}
+        .includeDomains=${domains}
+        .includeEntities=${allowedEntities}
+        @value-changed=${(e: CustomEvent<{ value?: string }>) =>
+          onChange(e.detail.value ?? "")}
+      ></ha-entity-picker
+    ></label>`;
   }
   private select(
     label: string,
@@ -151,18 +169,12 @@ export class MusicAssistantEditor extends LitElement {
         Choose Music Assistant player entities. Changes apply once all fields
         are valid.
       </p>
-      ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ""}<datalist
-        id="players"
-      >
-        ${Object.keys(this.hass?.states ?? {})
-          .filter((id) => id.startsWith("media_player."))
-          .map((id) => html`<option value=${id}></option>`)}</datalist
-      >${entities.map(
+      ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ""}${entities.map(
         (entity, i) =>
           html`<fieldset>
             <legend>Room ${i + 1}</legend>
             <div class="grid">
-              ${this.textField("Player entity", entity.entity_id, (v) => this.entity(i, { entity_id: v }), "players")}${this.textField("Room name", entity.name ?? "", (v) => this.entity(i, { name: v }))}${this.textField("Volume entity", entity.volume_entity ?? "", (v) => this.entity(i, { volume_entity: v }), "players")}${this.textField("Favorite button entity", entity.favorite_entity ?? "", (v) => this.entity(i, { favorite_entity: v }))}${this.textField("Integration entry ID", entity.config_entry_id ?? "", (v) => this.entity(i, { config_entry_id: v }))}<label
+              ${this.entityPicker("Player entity", entity.entity_id, ["media_player"], (v) => this.entity(i, { entity_id: v }))}${this.textField("Room name", entity.name ?? "", (v) => this.entity(i, { name: v }))}${this.entityPicker("Volume entity", entity.volume_entity, ["media_player"], (v) => this.entity(i, { volume_entity: v || undefined }))}${this.entityPicker("Favorite button entity", entity.favorite_entity, ["button"], (v) => this.entity(i, { favorite_entity: v || undefined }))}${this.textField("Integration entry ID", entity.config_entry_id ?? "", (v) => this.entity(i, { config_entry_id: v }))}<label
                 >Maximum volume (%)<input
                   aria-label="Maximum volume (%)"
                   type="number"
@@ -210,7 +222,7 @@ export class MusicAssistantEditor extends LitElement {
         Add room
       </button>
       <div class="grid">
-        ${this.select("Default player", this.config.default_player ?? "", ["", ...entities.map((e) => e.entity_id)], (v) => this.updateConfig({ default_player: v || undefined }))}${this.select("Layout", this.config.layout ?? "auto", ["auto", "compact", "standard", "expanded"], (v) => this.updateConfig({ layout: v as CardConfig["layout"] }))}${this.select("Artwork size", this.config.artwork_size ?? "medium", ["small", "medium", "large"], (v) => this.updateConfig({ artwork_size: v as CardConfig["artwork_size"] }))}${this.select("Queue extension", this.config.extension ?? "auto", ["auto", "off"], (v) => this.updateConfig({ extension: v as CardConfig["extension"] }))}${this.textField("Default integration entry ID", this.config.config_entry_id ?? "", (v) => this.updateConfig({ config_entry_id: v || undefined }))}
+        ${this.entityPicker("Default player", this.config.default_player, ["media_player"], (v) => this.updateConfig({ default_player: v || undefined }), entities.map((e) => e.entity_id).filter(Boolean))}${this.select("Layout", this.config.layout ?? "auto", ["auto", "compact", "standard", "expanded"], (v) => this.updateConfig({ layout: v as CardConfig["layout"] }))}${this.select("Artwork size", this.config.artwork_size ?? "medium", ["small", "medium", "large"], (v) => this.updateConfig({ artwork_size: v as CardConfig["artwork_size"] }))}${this.select("Queue extension", this.config.extension ?? "auto", ["auto", "off"], (v) => this.updateConfig({ extension: v as CardConfig["extension"] }))}${this.textField("Default integration entry ID", this.config.config_entry_id ?? "", (v) => this.updateConfig({ config_entry_id: v || undefined }))}
       </div>
       <fieldset>
         <legend>Appearance</legend>
@@ -245,12 +257,7 @@ export class MusicAssistantEditor extends LitElement {
         ${(this.config.room_presets ?? []).map(
           (preset, i) =>
             html`<fieldset>
-              ${this.textField("Preset name", preset.name, (v) => this.preset(i, { name: v }))}${this.select(
-                "Preset leader",
-                preset.leader,
-                entities.map((e) => e.entity_id),
-                (v) => this.preset(i, { leader: v }),
-              )}${entities.map((entity) => html`<label class="check"><input type="checkbox" .checked=${preset.members.includes(entity.entity_id)} @change=${(e: Event) => this.preset(i, { members: (e.target as HTMLInputElement).checked ? [...preset.members, entity.entity_id] : preset.members.filter((id) => id !== entity.entity_id) })} />${entity.name || entity.entity_id}</label>`)}<button
+              ${this.textField("Preset name", preset.name, (v) => this.preset(i, { name: v }))}${this.entityPicker("Preset leader", preset.leader, ["media_player"], (v) => this.preset(i, { leader: v }), entities.map((e) => e.entity_id).filter(Boolean))}${entities.map((entity) => html`<label class="check"><input type="checkbox" .checked=${preset.members.includes(entity.entity_id)} @change=${(e: Event) => this.preset(i, { members: (e.target as HTMLInputElement).checked ? [...preset.members, entity.entity_id] : preset.members.filter((id) => id !== entity.entity_id) })} />${entity.name || entity.entity_id}</label>`)}<button
                 @click=${() => this.updateConfig({ room_presets: this.config.room_presets?.filter((_, j) => i !== j) })}
               >
                 Remove preset

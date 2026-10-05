@@ -392,17 +392,29 @@ export const styles = css`
   .dialog-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 6px 12px;
     position: sticky;
     top: 0;
     background: var(--card-background-color, #fff);
     z-index: 1;
   }
+  .dialog-head h2 {
+    margin: 0 auto 0 4px;
+    font-size: 1.05rem;
+  }
   .dialog .pane {
     border: 0;
     max-height: none;
     overflow: visible;
+    padding: 4px 16px 12px;
+  }
+  .dialog .pane > .muted:first-child {
+    margin: 0 0 6px;
+  }
+  .dialog .item {
+    padding: 7px 0;
   }
   .dialog .player {
     padding: 16px;

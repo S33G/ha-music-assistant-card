@@ -341,6 +341,16 @@ export class MusicAssistantCard extends LitElement {
       >
         <div class="dialog-head">
           <h2 id="dialog-title">${this.dialog ? t(this.dialog) : ""}</h2>
+          ${
+            this.dialog === "queue"
+              ? this.button(
+                  t("refresh"),
+                  "refresh",
+                  () => this.controller?.refreshQueue(),
+                  !this.controller?.capabilities.queue,
+                )
+              : nothing
+          }
           ${this.button(t("close"), "close", () => this.shadowRoot?.querySelector("dialog")?.close(), false, "close")}
         </div>
         ${this.dialog ? this.messages() : nothing}
@@ -500,11 +510,7 @@ export class MusicAssistantCard extends LitElement {
   private queue() {
     const c = this.controller!;
     const q = c.queue;
-    return html`<div class="room-head">
-        <h3>${t("queue")}</h3>
-        ${this.button(t("refresh"), "refresh", () => c.refreshQueue(), !c.capabilities.queue)}
-      </div>
-      ${q?.kind === "partial" ? html`<p class="muted">Current and next. Full queue editing requires Music Assistant Queue Actions.</p>` : nothing}${!c.capabilities.queue ? html`<p class="empty">Queue service unavailable.</p>` : nothing}
+    return html`${q?.kind === "partial" ? html`<p class="muted">Current and next. Full queue editing requires Music Assistant Queue Actions.</p>` : nothing}${!c.capabilities.queue ? html`<p class="empty">Queue service unavailable.</p>` : nothing}
       <ul class="list">
         ${q?.items.map(
           (item, i) =>
