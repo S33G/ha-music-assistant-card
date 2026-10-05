@@ -85,6 +85,7 @@ export class MusicAssistantCard extends LitElement {
   private opener?: HTMLElement;
   private tick?: ReturnType<typeof setInterval>;
   private accentImage = "";
+  private activeAction?: string;
   set hass(value: Hass | undefined) {
     this._hass = value;
     if (value) this.controller?.updateHass(value);
@@ -199,6 +200,9 @@ export class MusicAssistantCard extends LitElement {
       <path d=${icons[name] ?? mdiPlay}></path>
     </svg>`;
   }
+  private spinner() {
+    return html`<span class="spinner" aria-hidden="true"></span>`;
+  }
   private button(
     label: string,
     icon: string,
@@ -206,20 +210,61 @@ export class MusicAssistantCard extends LitElement {
     disabled = false,
     extra = "",
     pressed?: boolean,
+    actionKey?: string,
   ) {
+    const busy = actionKey !== undefined && this.activeAction === actionKey;
     return html`<button
       class=${`icon ${extra}`}
       aria-label=${label}
       title=${label}
-      ?disabled=${disabled || (extra !== "close" && this.controller?.pending)}
+      ?disabled=${disabled || busy || (extra !== "close" && this.controller?.pending)}
+      aria-busy=${busy ? "true" : nothing}
       aria-pressed=${pressed === undefined ? nothing : String(pressed)}
       @click=${action}
     >
-      ${this.icon(icon)}
+      ${busy ? this.spinner() : this.icon(icon)}
     </button>`;
   }
-  private run(action: () => Promise<unknown>) {
-    void this.controller?.run(action);
+  private actionButton(
+    label: string,
+    key: string,
+    action: () => Promise<unknown>,
+    disabled = false,
+  ) {
+    const busy = this.activeAction === key;
+    return html`<button
+      class="action-button"
+      aria-label=${label}
+      aria-busy=${busy ? "true" : nothing}
+      ?disabled=${disabled || busy || this.controller?.pending}
+      @click=${() => this.run(action, key)}
+    >
+      <span class="action-label">${label}</span
+      >${busy ? this.spinner() : nothing}
+    </button>`;
+  }
+  private async run(action: () => Promise<unknown>, key?: string) {
+    const c = this.controller;
+    if (!c || c.pending) return;
+    this.activeAction = key;
+    this.requestUpdate();
+    try {
+      await c.run(action);
+    } finally {
+      this.activeAction = undefined;
+      this.requestUpdate();
+    }
+  }
+  private async read(action: () => Promise<unknown>, key: string) {
+    if (this.activeAction) return;
+    this.activeAction = key;
+    this.requestUpdate();
+    try {
+      await action();
+    } finally {
+      this.activeAction = undefined;
+      this.requestUpdate();
+    }
   }
   private async openDialog(
     view: NonNullable<MusicAssistantCard["dialog"]>,
@@ -297,12 +342,7 @@ export class MusicAssistantCard extends LitElement {
   }
   private messages() {
     const c = this.controller!;
-    return html`${c.error ? html`<div class="message error" role="alert">${c.error} ${c.canRetry ? html`<button @click=${() => c.retry()}>${t("retry")}</button>` : nothing}</div>` : nothing}<span
-        class="message"
-        role="status"
-        ?hidden=${!c.pending && !c.notice}
-        >${c.pending ? "Working…" : c.notice}</span
-      >`;
+    return html`${c.error ? html`<div class="message error" role="alert">${c.error} ${c.canRetry ? html`<button @click=${() => c.retry()}>${t("retry")}</button>` : nothing}</div>` : nothing}`;
   }
   protected render() {
     const c = this.controller;
@@ -360,8 +400,15 @@ export class MusicAssistantCard extends LitElement {
               ? this.button(
                   t("refresh"),
                   "refresh",
-                  () => this.controller?.refreshQueue(),
+                  () =>
+                    this.read(
+                      () => this.controller!.refreshQueue(),
+                      "queue-refresh",
+                    ),
                   !this.controller?.capabilities.queue,
+                  "",
+                  undefined,
+                  "queue-refresh",
                 )
               : nothing
           }
@@ -392,7 +439,7 @@ export class MusicAssistantCard extends LitElement {
       currentState.media_is_favorite === true ||
       currentState.is_favorite === true;
     const call = (service: string, data = {}) =>
-      this.run(() => native!.media(p.id, service, data));
+      this.run(() => native!.media(p.id, service, data), service);
     const artwork = html`<hamac-artwork
       .src=${p.image ?? ""}
       .accent=${c.config.artwork_accent}
@@ -411,7 +458,7 @@ export class MusicAssistantCard extends LitElement {
       </div>
       ${p.duration > 0 ? html`<div class="progress"><span>${formatTime(p.position)}</span><input type="range" aria-label="Playback position" min="0" max=${p.duration} .value=${String(Math.floor(p.position))} ?disabled=${off || !supportsFeature(Feature.seek) || c.pending} @change=${(e: Event) => call("media_seek", { seek_position: Number((e.target as HTMLInputElement).value) })} /><span>${formatTime(p.duration)}</span></div>` : nothing}
       <div class="transport">
-        ${supportsFeature(Feature.shuffle) ? this.button(t("shuffle"), "shuffle", () => call("shuffle_set", { shuffle: !p.shuffle }), off, "secondary", p.shuffle) : nothing}${
+        ${supportsFeature(Feature.shuffle) ? this.button(t("shuffle"), "shuffle", () => call("shuffle_set", { shuffle: !p.shuffle }), off, "secondary", p.shuffle, "shuffle_set") : nothing}${
           c.capabilities.favoriteEntity
             ? this.button(
                 liked ? "Current track is in favorites" : t("favorite"),
@@ -424,9 +471,10 @@ export class MusicAssistantCard extends LitElement {
                 off || !p.title || liked,
                 "favorite",
                 liked,
+                "favorite",
               )
             : nothing
-        }${supportsFeature(Feature.previous) ? this.button(t("previous"), "skip-previous", () => call("media_previous_track"), off, "secondary") : nothing}${supportsFeature(p.state === "playing" ? Feature.pause : Feature.play) ? this.button(p.state === "playing" ? t("pause") : t("play"), p.state === "playing" ? "pause" : "play", () => call(p.state === "playing" ? "media_pause" : "media_play"), off, "primary") : nothing}${supportsFeature(Feature.next) ? this.button(t("next"), "skip-next", () => call("media_next_track"), off) : nothing}${supportsFeature(Feature.repeat) ? this.button(`${t("repeat")}: ${p.repeat}`, p.repeat === "one" ? "repeat-once" : "repeat", () => call("repeat_set", { repeat: p.repeat === "off" ? "all" : p.repeat === "all" ? "one" : "off" }), off, "secondary", p.repeat !== "off") : nothing}
+        }${supportsFeature(Feature.previous) ? this.button(t("previous"), "skip-previous", () => call("media_previous_track"), off, "secondary", undefined, "media_previous_track") : nothing}${supportsFeature(p.state === "playing" ? Feature.pause : Feature.play) ? this.button(p.state === "playing" ? t("pause") : t("play"), p.state === "playing" ? "pause" : "play", () => call(p.state === "playing" ? "media_pause" : "media_play"), off, "primary", undefined, ["media_pause", "media_play"].includes(this.activeAction ?? "") ? this.activeAction : p.state === "playing" ? "media_pause" : "media_play") : nothing}${supportsFeature(Feature.next) ? this.button(t("next"), "skip-next", () => call("media_next_track"), off, "", undefined, "media_next_track") : nothing}${supportsFeature(Feature.repeat) ? this.button(`${t("repeat")}: ${p.repeat}`, p.repeat === "one" ? "repeat-once" : "repeat", () => call("repeat_set", { repeat: p.repeat === "off" ? "all" : p.repeat === "all" ? "one" : "off" }), off, "secondary", p.repeat !== "off", "repeat_set") : nothing}
       </div>
       ${supports(number(volumeEntity?.attributes.supported_features), Feature.volume) ? this.volume(entity) : nothing}
       ${full ? html`<div class="detail-actions">${c.config.sections.map((s) => html`<button @click=${() => this.openDialog(s)}>${t(s)}</button>`)}</div>` : nothing}
@@ -441,7 +489,7 @@ export class MusicAssistantCard extends LitElement {
     ].join(":");
   }
   private favoriteCurrentTrack(entityId: string, trackKey: string) {
-    void this.controller?.run(async () => {
+    void this.run(async () => {
       await this.hass!.callService(
         "button",
         "press",
@@ -449,7 +497,7 @@ export class MusicAssistantCard extends LitElement {
         { entity_id: entityId },
       );
       this.likedTrackKey = trackKey;
-    }, false);
+    }, "favorite");
   }
   private volume(entity: EntityConfig, group = false) {
     const c = this.controller!;
@@ -462,7 +510,7 @@ export class MusicAssistantCard extends LitElement {
       ["unavailable", "unknown"].includes(this.hass.states[target]!.state) ||
       c.pending;
     return html`<div class="volume">
-      ${supports(number(attrs?.supported_features), Feature.mute) && !group ? this.button(p.muted ? t("unmute") : t("mute"), p.muted ? "volume-off" : "volume-high", () => this.run(() => c.native!.media(target, "volume_mute", { is_volume_muted: !p.muted })), disabled) : nothing}<label
+      ${supports(number(attrs?.supported_features), Feature.mute) && !group ? this.button(p.muted ? t("unmute") : t("mute"), p.muted ? "volume-off" : "volume-high", () => this.run(() => c.native!.media(target, "volume_mute", { is_volume_muted: !p.muted }), "volume_mute"), disabled, "", undefined, "volume_mute") : nothing}<label
         ><span class="muted"
           >${group ? "Group volume" : p.name + " volume"}</span
         ><input
@@ -497,6 +545,7 @@ export class MusicAssistantCard extends LitElement {
               @input=${(e: Event) => c.search({ text: (e.target as HTMLInputElement).value })}
             />
           </label>
+          ${c.loading ? html`<span class="search-status" role="status" aria-label="Searching">${this.spinner()}</span>` : nothing}
           <button class="queue-shortcut" @click=${() => this.navigate("queue")}>
             ${this.icon("playlist-music-outline")}<span>Queue</span>
           </button>
@@ -534,7 +583,7 @@ export class MusicAssistantCard extends LitElement {
             : nothing
         }
       </div>
-      ${!c.capabilities.library && !c.capabilities.search ? html`<p class="empty">Search and library services are unavailable.</p>` : nothing}${c.loading ? html`<p role="status">Loading…</p>` : nothing}${this.mediaList(c.items)}${!c.loading && !c.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${c.hasMore ? html`<button ?disabled=${c.loading} @click=${() => c.browse(true)}>${t("more")}</button>` : nothing}
+      ${!c.capabilities.library && !c.capabilities.search ? html`<p class="empty">Search and library services are unavailable.</p>` : nothing}${this.mediaList(c.items)}${!c.loading && !c.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${c.hasMore ? html`<button class="action-button" aria-label=${t("more")} aria-busy=${this.activeAction === "browse-more" ? "true" : nothing} ?disabled=${c.loading} @click=${() => this.read(() => c.browse(true), "browse-more")}><span class="action-label">${t("more")}</span>${this.activeAction === "browse-more" ? this.spinner() : nothing}</button>` : nothing}
     </div>`;
   }
   private mediaList(items: MediaItem[]) {
@@ -555,12 +604,7 @@ export class MusicAssistantCard extends LitElement {
               >
             </button>
             <div class="actions">
-              <button
-                ?disabled=${this.controller?.pending || !this.current?.available || !item.uri}
-                @click=${() => this.run(() => this.controller!.native!.play(this.controller!.active, item, "play"))}
-              >
-                Play
-              </button>
+              ${this.actionButton("Play", `play:${item.uri}`, () => this.controller!.native!.play(this.controller!.active, item, "play"), !this.current?.available || !item.uri)}
             </div>
           </li>`,
       )}
@@ -583,23 +627,18 @@ export class MusicAssistantCard extends LitElement {
                 </div>
               </div>
               <div class="actions">
-                ${q.kind === "complete" ? c.capabilities.queueActions.map((action) => this.button({ play_queue_item: "Play queue item", move_queue_item_up: "Move up", move_queue_item_down: "Move down", move_queue_item_next: "Play next", remove_queue_item: "Remove" }[action] ?? action, { play_queue_item: "play", move_queue_item_up: "arrow-up", move_queue_item_down: "arrow-down", move_queue_item_next: "skip-next", remove_queue_item: "delete-outline" }[action] ?? "play", () => this.run(() => c.extension!.action(c.active, action, item)), !this.current?.available || !item.queueId)) : nothing}
+                ${q.kind === "complete" ? c.capabilities.queueActions.map((action) => this.button({ play_queue_item: "Play queue item", move_queue_item_up: "Move up", move_queue_item_down: "Move down", move_queue_item_next: "Play next", remove_queue_item: "Remove" }[action] ?? action, { play_queue_item: "play", move_queue_item_up: "arrow-up", move_queue_item_down: "arrow-down", move_queue_item_next: "skip-next", remove_queue_item: "delete-outline" }[action] ?? "play", () => this.run(() => c.extension!.action(c.active, action, item), `${action}:${item.queueId}`), !this.current?.available || !item.queueId, "", undefined, `${action}:${item.queueId}`)) : nothing}
               </div>
             </li>`,
         )}
       </ul>
-      ${!q?.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${q?.hasMore ? html`<button @click=${() => c.refreshQueue(true)}>${t("more")}</button>` : nothing}${
+      ${!q?.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${q?.hasMore ? html`<button class="action-button" aria-label=${t("more")} aria-busy=${this.activeAction === "queue-more" ? "true" : nothing} ?disabled=${this.activeAction === "queue-more"} @click=${() => this.read(() => c.refreshQueue(true), "queue-more")}><span class="action-label">${t("more")}</span>${this.activeAction === "queue-more" ? this.spinner() : nothing}</button>` : nothing}${
         q?.kind === "complete" &&
         supports(this.current!.features, Feature.clear)
           ? html`<details>
               <summary>Clear queue</summary>
               <p>This removes the current queue.</p>
-              <button
-                ?disabled=${c.pending || !this.current?.available}
-                @click=${() => this.run(() => c.native!.media(c.active, "clear_playlist"))}
-              >
-                Confirm clear queue
-              </button>
+              ${this.actionButton("Confirm clear queue", "clear_queue", () => c.native!.media(c.active, "clear_playlist"), !this.current?.available)}
             </details>`
           : nothing
       }`;
@@ -611,7 +650,7 @@ export class MusicAssistantCard extends LitElement {
       c.config.room_presets.length
         ? html`<h3>Room presets</h3>
             <div class="detail-actions">
-              ${c.config.room_presets.map((preset) => html`<button ?disabled=${c.pending} @click=${() => this.run(() => c.native!.preset(preset.leader, preset.members))}>${preset.name}</button>`)}
+              ${c.config.room_presets.map((preset) => this.actionButton(preset.name, `preset:${preset.name}`, () => c.native!.preset(preset.leader, preset.members)))}
             </div>`
         : nothing
     }${c.config.entities.map((entity) => {
@@ -632,7 +671,7 @@ export class MusicAssistantCard extends LitElement {
             @click=${() => c.select(room.id)}
           >
             ${t("select")}</button
-          >${!selected && supports(active.features, Feature.group) ? html`<button ?disabled=${!room.available || !active.available || grouped || c.pending} @click=${() => this.run(() => c.native!.join(c.active, [room.id]))}>${t("join")}</button>` : nothing}${room.members.length > 1 && supports(room.features, Feature.group) ? html`<button ?disabled=${!room.available || c.pending} @click=${() => this.run(() => c.native!.media(room.id, "unjoin"))}>${t("leave")}</button>` : nothing}${!selected && c.native?.has("music_assistant", "transfer_queue") ? html`<button ?disabled=${!room.available || !active.available || c.pending} @click=${() => this.run(() => c.native!.transfer(c.active, room.id))}>${t("transfer")}</button>` : nothing}
+          >${!selected && supports(active.features, Feature.group) ? this.actionButton(t("join"), `join:${room.id}`, () => c.native!.join(c.active, [room.id]), !room.available || !active.available || grouped) : nothing}${room.members.length > 1 && supports(room.features, Feature.group) ? this.actionButton(t("leave"), `leave:${room.id}`, () => c.native!.media(room.id, "unjoin"), !room.available) : nothing}${!selected && c.native?.has("music_assistant", "transfer_queue") ? this.actionButton(t("transfer"), `transfer:${room.id}`, () => c.native!.transfer(c.active, room.id), !room.available || !active.available) : nothing}
         </div>
       </section>`;
     })}`;
@@ -651,7 +690,7 @@ export class MusicAssistantCard extends LitElement {
         </div>
       </div>
       <div class="detail-actions">
-        ${(["play", "next", "add", "replace", "radio"] as const).map((mode) => html`<button ?disabled=${c.pending || !this.current?.available || !item.uri} @click=${() => this.run(() => c.native!.play(c.active, item, mode))}>${{ play: "Play now", next: "Play next", add: "Add to queue", replace: "Replace queue", radio: "Start radio" }[mode]}</button>`)}
+        ${(["play", "next", "add", "replace", "radio"] as const).map((mode) => this.actionButton({ play: "Play now", next: "Play next", add: "Add to queue", replace: "Replace queue", radio: "Start radio" }[mode], `${mode}:${item.uri}`, () => c.native!.play(c.active, item, mode), !this.current?.available || !item.uri))}
       </div>
       ${
         c.config.metadata

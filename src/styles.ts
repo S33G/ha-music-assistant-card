@@ -53,6 +53,36 @@ export const styles = css`
     opacity: 0.5;
     cursor: default;
   }
+  button[aria-busy="true"]:disabled {
+    opacity: 1;
+  }
+  .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    flex: none;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: music-spin 800ms linear infinite;
+  }
+  @keyframes music-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .action-button {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+  }
+  .action-button .action-label,
+  .action-button .spinner {
+    grid-area: 1 / 1;
+  }
+  .action-button[aria-busy="true"] .action-label {
+    visibility: hidden;
+  }
   button[aria-pressed="true"] {
     color: var(--primary-color, #03a9f4);
     border-color: currentColor;
@@ -306,6 +336,14 @@ export const styles = css`
   }
   .browse-bar .search input {
     width: 100%;
+  }
+  .search-status {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-bottom: 12px;
   }
   .queue-shortcut {
     display: inline-flex;
@@ -628,6 +666,9 @@ export const styles = css`
     }
   }
   @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
     * {
       scroll-behavior: auto !important;
       transition: none !important;

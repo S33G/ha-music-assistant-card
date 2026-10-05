@@ -27,7 +27,6 @@ export class CardController {
   hasMore = false;
   capabilities = emptyCapabilities();
   error = "";
-  notice = "";
   pending = false;
   loading = false;
   query: BrowseQuery = {
@@ -156,7 +155,6 @@ export class CardController {
     this.queue = undefined;
     this.items = [];
     this.error = "";
-    this.notice = "";
     this.loading = false;
     this.query = { ...this.query, offset: 0 };
     this.capabilities = emptyCapabilities();
@@ -331,16 +329,14 @@ export class CardController {
       }
     }
   }
-  async run(action: () => Promise<unknown>, showSuccessNotice = true) {
+  async run(action: () => Promise<unknown>) {
     if (this.pending || !this.native) return;
     this.pending = true;
     this.error = "";
-    this.notice = "";
     this.retryRead = undefined;
     this.changed();
     try {
       await action();
-      if (showSuccessNotice) this.notice = "Done";
       this.cache.clear();
     } catch (e) {
       this.error = errorMessage(e);

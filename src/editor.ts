@@ -153,7 +153,8 @@ export class MusicAssistantEditor extends LitElement {
     return html`<label class="entity-picker"
       >${label}<ha-entity-picker
         .hass=${this.hass}
-        .label=${label}
+        .label=${""}
+        aria-label=${label}
         .value=${value || undefined}
         .includeDomains=${domains}
         .includeEntities=${allowedEntities}

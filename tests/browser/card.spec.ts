@@ -24,6 +24,32 @@ test("playback and independent cards", async ({ page }) => {
     "media_player.living",
   );
 });
+test("clicked playback action shows a spinner until the service responds", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const hass = Reflect.get(window, "hass");
+    const callService = hass.callService.bind(hass);
+    Reflect.set(window, "completeAction", undefined);
+    hass.callService = (...args: unknown[]) =>
+      new Promise((resolve, reject) => {
+        Reflect.set(window, "completeAction", () => {
+          Promise.resolve(callService(...args)).then(resolve, reject);
+        });
+      });
+  });
+  const card = page.locator("ha-music-assistant-card");
+  const pause = card.getByRole("button", { name: "Pause", exact: true });
+  await pause.click();
+  await expect(pause).toHaveAttribute("aria-busy", "true");
+  await expect(pause.locator(".spinner")).toBeVisible();
+  await expect(card.getByText("Working…")).toHaveCount(0);
+  await page.evaluate(() => Reflect.get(window, "completeAction")());
+  await expect(
+    card.getByRole("button", { name: "Play", exact: true }),
+  ).toBeVisible();
+  await expect(card.getByText("Done", { exact: true })).toHaveCount(0);
+});
 test("search then enqueue retains target and modal size", async ({ page }) => {
   const card = page.locator("ha-music-assistant-card");
   const before = await card.boundingBox();
