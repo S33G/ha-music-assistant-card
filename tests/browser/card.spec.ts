@@ -142,6 +142,78 @@ test("visual editor preserves unknown configuration keys", async ({ page }) => {
     .poll(() => page.evaluate(() => Reflect.get(window, "edited")))
     .toMatchObject({ layout: "compact", future_option: { enabled: true } });
 });
+test("editor adds multiple players or every player in an area and saves the volume slider", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const hass = Reflect.get(window, "hass");
+    const originalCallWS = hass.callWS.bind(hass);
+    hass.callWS = async (message: { type?: string }) => {
+      if (message.type === "config/entity_registry/list")
+        return [
+          { entity_id: "media_player.kitchen", device_id: "kitchen-device" },
+          { entity_id: "media_player.bedroom", area_id: "kitchen" },
+        ];
+      if (message.type === "config/device_registry/list")
+        return [{ id: "kitchen-device", area_id: "kitchen" }];
+      return originalCallWS(message);
+    };
+    const editor = document.createElement("ha-music-assistant-card-editor");
+    Reflect.set(editor, "hass", hass);
+    Reflect.get(editor, "setConfig").call(editor, {
+      type: "custom:ha-music-assistant-card",
+      entities: ["media_player.living"],
+    });
+    editor.addEventListener("config-changed", (event) =>
+      Reflect.set(window, "edited", Reflect.get(event, "detail").config),
+    );
+    document.getElementById("editor")!.append(editor);
+  });
+  const editor = page.locator("ha-music-assistant-card-editor");
+  await editor
+    .locator("ha-selector")
+    .nth(1)
+    .evaluate((element) =>
+      element.dispatchEvent(
+        new CustomEvent("value-changed", {
+          detail: { value: ["media_player.kitchen", "media_player.bedroom"] },
+        }),
+      ),
+    );
+  await editor.getByRole("button", { name: "Add players" }).click();
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "edited")?.entities))
+    .toHaveLength(3);
+  await editor.getByRole("button", { name: "Remove room" }).nth(1).click();
+  await editor.getByRole("button", { name: "Remove room" }).nth(1).click();
+  await editor
+    .locator("ha-selector")
+    .first()
+    .evaluate((element) =>
+      element.dispatchEvent(
+        new CustomEvent("value-changed", { detail: { value: "kitchen" } }),
+      ),
+    );
+  await editor.getByRole("button", { name: "Add players" }).click();
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "edited")?.entities))
+    .toHaveLength(3);
+  await editor
+    .getByRole("slider", { name: "Maximum volume for media_player.living" })
+    .evaluate((element) => {
+      const slider = element as HTMLInputElement;
+      slider.value = "65";
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      slider.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => Reflect.get(window, "edited")?.entities[0]?.max_volume,
+      ),
+    )
+    .toBe(65);
+});
 for (const width of [180, 276, 372, 768])
   for (const layout of ["compact", "standard", "expanded"])
     test(`grid ${width}px ${layout} has no horizontal overflow`, async ({
@@ -204,9 +276,65 @@ test("screenshot gallery", async ({ page, browserName }) => {
     .locator("ha-music-assistant-card")
     .first()
     .screenshot({ path: "docs/player-dark.png", animations: "disabled" });
+  await page.evaluate(() => document.body.classList.remove("dark"));
+  await page
+    .getByRole("button", { name: "Browse", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.locator("ha-music-assistant-card").first().locator(".queue-shortcut"),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "docs/browse-light.png",
+    animations: "disabled",
+  });
+  await page
+    .locator("ha-music-assistant-card")
+    .first()
+    .locator(".queue-shortcut")
+    .click();
+  await expect(page.getByRole("heading", { name: "Queue" })).toBeVisible();
+  await page.screenshot({
+    path: "docs/queue-light.png",
+    animations: "disabled",
+  });
+  await page
+    .locator("ha-music-assistant-card")
+    .first()
+    .getByRole("button", { name: "Close" })
+    .click();
+  await page.evaluate(() => {
+    document.getElementById("second-slot")!.style.height = "376px";
+    Reflect.get(window, "createCard")(
+      { entities: ["media_player.living"], sections: [] },
+      "second-slot",
+    );
+  });
+  await page.locator("#second-slot ha-music-assistant-card").screenshot({
+    path: "docs/player-single-room.png",
+    animations: "disabled",
+  });
+  await page.evaluate(() => {
+    Reflect.get(window, "createCard")(
+      { layout: "standard", advanced_search: true },
+      "second-slot",
+    );
+  });
+  await page
+    .locator("#second-slot ha-music-assistant-card")
+    .getByRole("button", { name: "Browse", exact: true })
+    .click();
+  await page
+    .locator("#second-slot ha-music-assistant-card")
+    .locator(".advanced-search summary")
+    .click();
+  await page.screenshot({
+    path: "docs/search-advanced.png",
+    animations: "disabled",
+  });
 });
 
-test("standard core controls fit without scrolling and details stay secondary", async ({
+test("standard core controls fit without scrolling and favorites stay available", async ({
   page,
 }) => {
   const card = page.locator("ha-music-assistant-card");

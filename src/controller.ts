@@ -331,7 +331,7 @@ export class CardController {
       }
     }
   }
-  async run(action: () => Promise<unknown>) {
+  async run(action: () => Promise<unknown>, showSuccessNotice = true) {
     if (this.pending || !this.native) return;
     this.pending = true;
     this.error = "";
@@ -340,7 +340,7 @@ export class CardController {
     this.changed();
     try {
       await action();
-      this.notice = "Done";
+      if (showSuccessNotice) this.notice = "Done";
       this.cache.clear();
     } catch (e) {
       this.error = errorMessage(e);

@@ -327,6 +327,17 @@ export class MusicAssistantEditor extends LitElement {
         ${(["metadata", "artwork_accent"] as const).map((key) => html`<label class="check"><input type="checkbox" .checked=${this.config[key] ?? key === "metadata"} @change=${(e: Event) => this.updateConfig({ [key]: (e.target as HTMLInputElement).checked })} />${key === "metadata" ? "Show metadata" : "Use artwork accent colors"}</label>`)}
       </fieldset>
       <fieldset>
+        <legend>Search</legend>
+        <label class="check">
+          <input
+            type="checkbox"
+            .checked=${this.config.advanced_search ?? false}
+            @change=${(e: Event) => this.updateConfig({ advanced_search: (e.target as HTMLInputElement).checked })}
+          />
+          Show advanced media type and collection filters
+        </label>
+      </fieldset>
+      <fieldset>
         <legend>Visible sections</legend>
         ${(["browse", "queue", "rooms"] as Section[]).map(
           (section) =>

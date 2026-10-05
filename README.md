@@ -2,16 +2,32 @@
 
 A theme-aware Home Assistant card for music discovery, playback, and multiroom control. Built with strict TypeScript and Lit. All dependencies ship in one local JavaScript module.
 
-![Refined music controls](docs/player-light.png)
+### Player controls
 
-[Dark theme preview](docs/player-dark.png) · [Standard and compact layouts](docs/cards-light.png)
+![Music player with a liked track, transport, volume, and room navigation](docs/player-light.png)
+
+![Single room player without a room selector or bottom navigation](docs/player-single-room.png)
+
+![Player in Home Assistant's dark theme](docs/player-dark.png)
+
+### Browse and queue
+
+![Browse dialog with the sticky search field and Queue shortcut](docs/browse-light.png)
+
+![Queue dialog with refresh beside close](docs/queue-light.png)
+
+![Advanced search filters shown when enabled in the card config](docs/search-advanced.png)
+
+![Standard and compact cards together](docs/cards-light.png)
+
+![Standard and compact cards in dark theme](docs/cards-dark.png)
 
 ## Install
 
 1. Build with Node.js 20.19+ and `npm ci && npm run build`, or use the included `ha-music-assistant-card.js`.
 2. Copy that module into Home Assistant's `/config/www/` directory.
 3. Add `/local/ha-music-assistant-card.js` as a **JavaScript module** dashboard resource.
-4. Add **Music Assistant** from the card picker, select your Music Assistant player entities, and save.
+4. Add **Music Assistant** from the card picker. In the visual editor, choose an area to add its player entities, or select several player entities directly, then save.
 
 ```yaml
 type: custom:ha-music-assistant-card
@@ -66,6 +82,7 @@ default_player: media_player.living_room
 sections: [browse, queue, rooms]
 artwork_size: medium
 metadata: true
+advanced_search: false
 artwork_accent: false
 extension: auto
 room_presets:
@@ -83,12 +100,17 @@ room_presets:
 | `sections`        | All three          | Ordered, unique `browse`, `queue`, `rooms`; `[]` hides navigation |
 | `artwork_size`    | `medium`           | `small`, `medium`, `large`                                        |
 | `metadata`        | `true`             | Album and detail presentation                                     |
+| `advanced_search` | `false`            | Show media type and collection controls in Browse                 |
 | `artwork_accent`  | `false`            | Subtle static background tint; text retains theme colors          |
 | `extension`       | `auto`             | Detect optional extension, or `off`                               |
 | `config_entry_id` | Registry discovery | Default native integration entry override                         |
 | `room_presets`    | `[]`               | Name, leader, and members, all from configured rooms              |
 
 Room objects accept `entity_id`, `name`, `volume_entity`, `max_volume` (0–100), `config_entry_id`, and `favorite_entity`. Volume ceilings constrain commands issued by this card; other clients can exceed them. Group-volume adjustments set each member to the selected absolute percentage, respecting configured ceilings. Presets add their members and preserve existing membership. Failed rooms are reported individually; successful joins are not undone.
+
+The visual editor expands an area into its current `media_player` entities when you add it. Direct entity area assignments take priority over device areas. If you select player entities as well as an area, only the selected players are added. Area expansion is a one-time edit; add the area again if its players change later. The maximum-volume slider saves a 0–100% ceiling for each configured player.
+
+The room selector is hidden when the card has one player. The bottom navigation disappears when every visible section is disabled.
 
 Selecting a room changes only this card's control target. **Join playback** groups it with the selected room. **Move playback here** transfers the selected room's queue to the destination.
 
@@ -102,7 +124,7 @@ Selecting a room changes only this card's control target. **Join playback** grou
 
 User-selected Home Assistant grid dimensions take precedence. Short allocations collapse secondary controls into the player dialog. Expanded cards split at 720px **card width**, not screen width. Search, room controls, queue, and details use accessible dialogs in smaller cards without increasing dashboard height. Long content scrolls within its panel. Masonry uses measured card height. Panel views and stacks use their parent's allocated space.
 
-Native search returns at most 50 results for the selected media type; refine the query for more. Empty searches browse library collections in 25-item pages. The queue extension pages 50 items at a time. Artist and podcast child lists use the extension's non-paginated endpoints. Metadata is supplied by Music Assistant: no third-party account, token, or metadata subscription is stored by the card.
+Native search returns at most 50 results for the selected media type; refine the query for more. Media type and collection selectors are hidden unless `advanced_search` is enabled. The search field stays visible at the top while results scroll. Empty searches browse library collections in 25-item pages. The queue extension pages 50 items at a time. Artist and podcast child lists use the extension's non-paginated endpoints. Metadata is supplied by Music Assistant: no third-party account, token, or metadata subscription is stored by the card.
 
 ## Development and validation
 

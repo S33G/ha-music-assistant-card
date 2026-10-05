@@ -6,6 +6,7 @@ import {
   mdiDeleteOutline,
   mdiDotsHorizontal,
   mdiHeartOutline,
+  mdiHeart,
   mdiHomeSoundOutOutline,
   mdiMagnify,
   mdiPause,
@@ -50,6 +51,7 @@ const icons: Record<string, string> = {
   "delete-outline": mdiDeleteOutline,
   "dots-horizontal": mdiDotsHorizontal,
   "heart-outline": mdiHeartOutline,
+  heart: mdiHeart,
   "home-sound-out-outline": mdiHomeSoundOutOutline,
   magnify: mdiMagnify,
   pause: mdiPause,
@@ -78,6 +80,7 @@ export class MusicAssistantCard extends LitElement {
   private detailItems: MediaItem[] = [];
   private detailPage = 0;
   private detailMore = false;
+  private likedTrackKey?: string;
   private detailToken = 0;
   private opener?: HTMLElement;
   private tick?: ReturnType<typeof setInterval>;
@@ -312,27 +315,38 @@ export class MusicAssistantCard extends LitElement {
       >`;
     return html`<ha-card class=${this.compact ? "compact" : ""}
         ><div class="header">
-          <select
-            aria-label="Selected room"
-            .value=${c.active}
-            ?disabled=${c.pending}
-            @change=${(e: Event) => c.select((e.target as HTMLSelectElement).value)}
-          >
-            ${c.config.entities.map((entity) => {
-              const room = playerState(this.hass, entity);
-              return html`<option value=${room.id} ?disabled=${!room.available}>
-                ${room.name}${!room.available ? " · Unavailable" : ""}
-              </option>`;
-            })}</select
-          >${this.button("More player controls", "dots-horizontal", () => this.openDialog("player"))}
+          ${
+            c.config.entities.length > 1
+              ? html`<select
+                  aria-label="Selected room"
+                  .value=${c.active}
+                  ?disabled=${c.pending}
+                  @change=${(e: Event) => c.select((e.target as HTMLSelectElement).value)}
+                >
+                  ${c.config.entities.map((entity) => {
+                    const room = playerState(this.hass, entity);
+                    return html`<option
+                      value=${room.id}
+                      ?disabled=${!room.available}
+                    >
+                      ${room.name}${!room.available ? " · Unavailable" : ""}
+                    </option>`;
+                  })}
+                </select>`
+              : html`<span class="header-room">${p.name}</span>`
+          }${this.button("More player controls", "dots-horizontal", () => this.openDialog("player"))}
         </div>
         ${this.dialog ? nothing : this.messages()}
         <div class=${`body ${this.split ? "split" : ""}`}>
           ${this.inlinePanels && !this.split && c.section ? html`<section class="pane"><button class="back" @click=${() => c.setSection(undefined)}>Back to player</button>${this.section(c.section)}</section>` : this.player()}${this.split ? html`<section class="pane">${this.section(c.section ?? c.config.sections[0])}</section>` : nothing}
         </div>
-        <nav class="nav" aria-label="Music navigation">
-          ${c.config.sections.map((s) => html`<button aria-current=${this.inlinePanels && c.section === s ? "page" : nothing} @click=${() => this.navigate(s)}>${this.icon(s === "browse" ? "magnify" : s === "queue" ? "playlist-music-outline" : "home-sound-out-outline")} <span>${t(s)}</span></button>`)}
-        </nav></ha-card
+        ${
+          c.config.sections.length
+            ? html`<nav class="nav" aria-label="Music navigation">
+                ${c.config.sections.map((s) => html`<button aria-current=${this.inlinePanels && c.section === s ? "page" : nothing} @click=${() => this.navigate(s)}>${this.icon(s === "browse" ? "magnify" : s === "queue" ? "playlist-music-outline" : "home-sound-out-outline")} <span>${t(s)}</span></button>`)}
+              </nav>`
+            : nothing
+        }</ha-card
       >
       <dialog
         class="dialog"
@@ -367,6 +381,16 @@ export class MusicAssistantCard extends LitElement {
     const supportsFeature = (f: number) => supports(p.features, f);
     const entity = c.config.entities.find((e) => e.entity_id === p.id)!;
     const volumeEntity = this.hass?.states[entity.volume_entity || p.id];
+    const trackKey = this.currentTrackKey(p.id);
+    const currentState = record(this.hass?.states[p.id]?.attributes);
+    const queuedTrack = c.queue?.items.find(
+      (item) => item.uri && item.uri === text(currentState.media_content_id),
+    );
+    const liked =
+      this.likedTrackKey === trackKey ||
+      queuedTrack?.favorite === true ||
+      currentState.media_is_favorite === true ||
+      currentState.is_favorite === true;
     const call = (service: string, data = {}) =>
       this.run(() => native!.media(p.id, service, data));
     const artwork = html`<hamac-artwork
@@ -387,29 +411,45 @@ export class MusicAssistantCard extends LitElement {
       </div>
       ${p.duration > 0 ? html`<div class="progress"><span>${formatTime(p.position)}</span><input type="range" aria-label="Playback position" min="0" max=${p.duration} .value=${String(Math.floor(p.position))} ?disabled=${off || !supportsFeature(Feature.seek) || c.pending} @change=${(e: Event) => call("media_seek", { seek_position: Number((e.target as HTMLInputElement).value) })} /><span>${formatTime(p.duration)}</span></div>` : nothing}
       <div class="transport">
-        ${supportsFeature(Feature.shuffle) ? this.button(t("shuffle"), "shuffle", () => call("shuffle_set", { shuffle: !p.shuffle }), off, "secondary", p.shuffle) : nothing}${supportsFeature(Feature.previous) ? this.button(t("previous"), "skip-previous", () => call("media_previous_track"), off, "secondary") : nothing}${supportsFeature(p.state === "playing" ? Feature.pause : Feature.play) ? this.button(p.state === "playing" ? t("pause") : t("play"), p.state === "playing" ? "pause" : "play", () => call(p.state === "playing" ? "media_pause" : "media_play"), off, "primary") : nothing}${supportsFeature(Feature.next) ? this.button(t("next"), "skip-next", () => call("media_next_track"), off) : nothing}${supportsFeature(Feature.repeat) ? this.button(`${t("repeat")}: ${p.repeat}`, p.repeat === "one" ? "repeat-once" : "repeat", () => call("repeat_set", { repeat: p.repeat === "off" ? "all" : p.repeat === "all" ? "one" : "off" }), off, "secondary", p.repeat !== "off") : nothing}
+        ${supportsFeature(Feature.shuffle) ? this.button(t("shuffle"), "shuffle", () => call("shuffle_set", { shuffle: !p.shuffle }), off, "secondary", p.shuffle) : nothing}${
+          c.capabilities.favoriteEntity
+            ? this.button(
+                liked ? "Current track is in favorites" : t("favorite"),
+                liked ? "heart" : "heart-outline",
+                () =>
+                  this.favoriteCurrentTrack(
+                    c.capabilities.favoriteEntity!,
+                    trackKey,
+                  ),
+                off || !p.title || liked,
+                "favorite",
+                liked,
+              )
+            : nothing
+        }${supportsFeature(Feature.previous) ? this.button(t("previous"), "skip-previous", () => call("media_previous_track"), off, "secondary") : nothing}${supportsFeature(p.state === "playing" ? Feature.pause : Feature.play) ? this.button(p.state === "playing" ? t("pause") : t("play"), p.state === "playing" ? "pause" : "play", () => call(p.state === "playing" ? "media_pause" : "media_play"), off, "primary") : nothing}${supportsFeature(Feature.next) ? this.button(t("next"), "skip-next", () => call("media_next_track"), off) : nothing}${supportsFeature(Feature.repeat) ? this.button(`${t("repeat")}: ${p.repeat}`, p.repeat === "one" ? "repeat-once" : "repeat", () => call("repeat_set", { repeat: p.repeat === "off" ? "all" : p.repeat === "all" ? "one" : "off" }), off, "secondary", p.repeat !== "off") : nothing}
       </div>
       ${supports(number(volumeEntity?.attributes.supported_features), Feature.volume) ? this.volume(entity) : nothing}
-      <div class="extras">
-        ${c.capabilities.favoriteEntity ? this.button(t("favorite"), "heart-outline", () => this.run(() => this.hass!.callService("button", "press", {}, { entity_id: c.capabilities.favoriteEntity! })), off) : nothing}${
-          c.config.metadata
-            ? html`<details class="metadata">
-                <summary>Track details</summary>
-                <p>
-                  ${p.title || "No track selected"}<br />${p.artist}<br />${p.album}
-                </p>
-                <button
-                  ?disabled=${off || !p.title}
-                  @click=${() => this.openDialog("details", normalizeItem({ name: p.title, artist: p.artist, album: p.album, image: p.image, uri: this.hass?.states[p.id]?.attributes.media_content_id, media_type: "track" }))}
-                >
-                  Open details
-                </button>
-              </details>`
-            : nothing
-        }
-      </div>
       ${full ? html`<div class="detail-actions">${c.config.sections.map((s) => html`<button @click=${() => this.openDialog(s)}>${t(s)}</button>`)}</div>` : nothing}
     </section>`;
+  }
+  private currentTrackKey(playerId: string) {
+    const attrs = record(this.hass?.states[playerId]?.attributes);
+    return [
+      playerId,
+      text(attrs.media_content_id) ||
+        `${text(attrs.media_title)}|${text(attrs.media_artist)}`,
+    ].join(":");
+  }
+  private favoriteCurrentTrack(entityId: string, trackKey: string) {
+    void this.controller?.run(async () => {
+      await this.hass!.callService(
+        "button",
+        "press",
+        {},
+        { entity_id: entityId },
+      );
+      this.likedTrackKey = trackKey;
+    }, false);
   }
   private volume(entity: EntityConfig, group = false) {
     const c = this.controller!;
@@ -444,39 +484,58 @@ export class MusicAssistantCard extends LitElement {
   }
   private browse() {
     const c = this.controller!;
-    return html`<div class="filters">
-        <label class="search"
-          ><span class="muted">${t("search")}</span
-          ><input
-            type="search"
-            placeholder="Artists, albums, tracks…"
-            aria-label=${t("search")}
-            .value=${c.query.text}
-            @input=${(e: Event) => c.search({ text: (e.target as HTMLInputElement).value })} /></label
-        ><label
-          ><span class="muted">Media type</span
-          ><select
-            aria-label="Media type"
-            .value=${c.query.type}
-            @change=${(e: Event) => c.search({ type: (e.target as HTMLSelectElement).value as typeof c.query.type })}
-          >
-            ${mediaTypes.map((type) => html`<option value=${type}>${type}</option>`)}
-          </select></label
-        ><label
-          ><span class="muted">Collection</span
-          ><select
-            aria-label="Collection"
-            .value=${c.query.source}
-            @change=${(e: Event) => c.search({ source: (e.target as HTMLSelectElement).value as typeof c.query.source })}
-          >
-            <option value="all">All providers</option>
-            <option value="library">Library</option>
-            <option value="favorites">Favorites</option>
-            <option value="recent">Recently played</option>
-          </select></label
-        >
+    return html`<div class="browse">
+      <div class="browse-sticky">
+        <div class="browse-bar">
+          <label class="search"
+            ><span class="muted">${t("search")}</span
+            ><input
+              type="search"
+              placeholder="Artists, albums, tracks…"
+              aria-label=${t("search")}
+              .value=${c.query.text}
+              @input=${(e: Event) => c.search({ text: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <button class="queue-shortcut" @click=${() => this.navigate("queue")}>
+            ${this.icon("playlist-music-outline")}<span>Queue</span>
+          </button>
+        </div>
+        ${
+          c.config.advanced_search
+            ? html`<details class="advanced-search">
+                <summary>Advanced search</summary>
+                <div class="advanced-filters">
+                  <label
+                    ><span class="muted">Media type</span
+                    ><select
+                      aria-label="Media type"
+                      .value=${c.query.type}
+                      @change=${(e: Event) => c.search({ type: (e.target as HTMLSelectElement).value as typeof c.query.type })}
+                    >
+                      ${mediaTypes.map((type) => html`<option value=${type}>${type}</option>`)}
+                    </select>
+                  </label>
+                  <label
+                    ><span class="muted">Collection</span
+                    ><select
+                      aria-label="Collection"
+                      .value=${c.query.source}
+                      @change=${(e: Event) => c.search({ source: (e.target as HTMLSelectElement).value as typeof c.query.source })}
+                    >
+                      <option value="all">All providers</option>
+                      <option value="library">Library</option>
+                      <option value="favorites">Favorites</option>
+                      <option value="recent">Recently played</option>
+                    </select>
+                  </label>
+                </div>
+              </details>`
+            : nothing
+        }
       </div>
-      ${!c.capabilities.library && !c.capabilities.search ? html`<p class="empty">Search and library services are unavailable.</p>` : nothing}${c.loading ? html`<p role="status">Loading…</p>` : nothing}${this.mediaList(c.items)}${!c.loading && !c.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${c.hasMore ? html`<button ?disabled=${c.loading} @click=${() => c.browse(true)}>${t("more")}</button>` : nothing}`;
+      ${!c.capabilities.library && !c.capabilities.search ? html`<p class="empty">Search and library services are unavailable.</p>` : nothing}${c.loading ? html`<p role="status">Loading…</p>` : nothing}${this.mediaList(c.items)}${!c.loading && !c.items.length ? html`<p class="empty">${t("empty")}</p>` : nothing}${c.hasMore ? html`<button ?disabled=${c.loading} @click=${() => c.browse(true)}>${t("more")}</button>` : nothing}
+    </div>`;
   }
   private mediaList(items: MediaItem[]) {
     return html`<ul class="list">

@@ -59,6 +59,7 @@ export interface CardConfig {
   sections?: Section[];
   artwork_size?: "small" | "medium" | "large";
   metadata?: boolean;
+  advanced_search?: boolean;
   artwork_accent?: boolean;
   room_presets?: RoomPreset[];
   extension?: "auto" | "off";
@@ -71,6 +72,7 @@ export interface Config extends CardConfig {
   sections: Section[];
   artwork_size: NonNullable<CardConfig["artwork_size"]>;
   metadata: boolean;
+  advanced_search: boolean;
   artwork_accent: boolean;
   room_presets: RoomPreset[];
   extension: "auto" | "off";

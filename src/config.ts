@@ -50,7 +50,7 @@ export function buildConfig(input: CardConfig): Config {
     !["small", "medium", "large"].includes(input.artwork_size)
   )
     throw new Error("Unknown artwork size.");
-  for (const key of ["metadata", "artwork_accent"] as const)
+  for (const key of ["metadata", "advanced_search", "artwork_accent"] as const)
     if (input[key] !== undefined && typeof input[key] !== "boolean")
       throw new Error(`${key} must be a boolean.`);
   const presets = input.room_presets ?? [];
@@ -76,6 +76,7 @@ export function buildConfig(input: CardConfig): Config {
     sections: sections as Section[],
     artwork_size: input.artwork_size ?? "medium",
     metadata: input.metadata ?? true,
+    advanced_search: input.advanced_search ?? false,
     artwork_accent: input.artwork_accent ?? false,
     extension: input.extension ?? "auto",
     room_presets: presets.map((p) => ({

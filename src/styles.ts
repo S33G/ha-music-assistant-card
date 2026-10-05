@@ -34,7 +34,7 @@ export const styles = css`
     min-height: 44px;
     border-radius: 10px;
     border: 1px solid var(--divider-color, #ddd);
-    background: var(--card-background-color, #fff);
+    background: var(--ha-card-background, var(--card-background-color, #fff));
     padding: 8px 12px;
   }
   button {
@@ -97,6 +97,17 @@ export const styles = css`
     );
     color: var(--primary-color, #03a9f4);
   }
+  button.icon.favorite[aria-pressed="true"] {
+    color: var(--error-color, #d32f2f);
+    background: color-mix(
+      in srgb,
+      var(--error-color, #d32f2f) 12%,
+      transparent
+    );
+  }
+  button.icon.favorite[aria-pressed="true"]:disabled {
+    opacity: 1;
+  }
   button.icon.primary {
     width: 52px;
     height: 52px;
@@ -144,6 +155,15 @@ export const styles = css`
     border: 0;
     background: transparent;
     font-weight: 500;
+  }
+  .header-room {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .header button.icon {
     background: var(--secondary-background-color, #eee);
@@ -220,8 +240,13 @@ export const styles = css`
     gap: 8px;
   }
   .volume label {
+    display: flex;
+    align-items: center;
     flex: 1;
     min-width: 0;
+  }
+  .volume label input[type="range"] {
+    margin: 0;
   }
   .nav {
     display: flex;
@@ -262,21 +287,57 @@ export const styles = css`
     overflow: auto;
     border-top: 1px solid var(--divider-color, #ddd);
   }
-  .filters {
+  .browse-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-bottom: 8px;
+    background: var(--card-background-color, #fff);
+  }
+  .browse-bar {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+  }
+  .browse-bar .search {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
+  .browse-bar .search input {
+    width: 100%;
+  }
+  .queue-shortcut {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    flex: none;
+  }
+  .queue-shortcut svg {
+    width: 18px;
+    height: 18px;
+  }
+  .advanced-search {
+    margin-top: 4px;
+  }
+  .advanced-search summary {
+    min-height: 36px;
+    padding: 8px 0;
+  }
+  .advanced-filters {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 12px;
   }
-  .filters label {
+  .advanced-filters label {
     flex: 1;
     min-width: 110px;
+    margin: 0;
   }
-  .filters select {
+  .advanced-filters select {
     width: 100%;
-  }
-  .filters .search {
-    flex-basis: 100%;
   }
   .list {
     list-style: none;
@@ -513,9 +574,6 @@ export const styles = css`
     width: 44px;
     height: 44px;
   }
-  .body .extras {
-    display: none;
-  }
   .body .volume label > span {
     display: none;
   }
@@ -562,7 +620,7 @@ export const styles = css`
     .compact .hero hamac-artwork {
       display: none;
     }
-    .filters label {
+    .advanced-filters label {
       min-width: 80px;
     }
     .item .actions {
