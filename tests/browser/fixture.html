@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Music Assistant Card fixture</title>
+    <style>
+      :root {
+        --primary-color: #007fa8;
+        --primary-text-color: #212121;
+        --secondary-text-color: #60676c;
+        --card-background-color: #fff;
+        --secondary-background-color: #f3f5f6;
+        --divider-color: #e0e4e6;
+        --ha-card-border-radius: 16px;
+        --text-primary-color: #fff;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f4f6f8;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .cards {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .slot {
+        width: min(100%, 420px);
+        height: 376px;
+      }
+      ha-music-assistant-card {
+        display: block;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body.dark {
+        --primary-text-color: #e6e6e6;
+        --secondary-text-color: #b3b9bd;
+        --card-background-color: #20272c;
+        --secondary-background-color: #30383d;
+        --divider-color: #434c52;
+        background: #161c20;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Home · Music</h1>
+      <div class="cards">
+        <div class="slot" id="slot"></div>
+        <div class="slot" id="second-slot"></div>
+      </div>
+      <div id="editor"></div>
+    </main>
+    <script type="module">
+      import "/ha-music-assistant-card.js";
+      const extension = new URLSearchParams(location.search).has("extension");
+      window.calls = [];
+      window.fail = false;
+      const feature =
+        1 | 2 | 4 | 8 | 16 | 32 | 512 | 8192 | 16384 | 32768 | 262144 | 524288;
+      const item = {
+        uri: "library://track/1",
+        name: "Weightless",
+        media_type: "track",
+        image: "/tests/browser/cover.svg",
+        artists: [
+          {
+            name: "Marconi Union",
+            uri: "library://artist/1",
+            media_type: "artist",
+          },
+        ],
+        album: {
+          name: "Ambient Transmissions",
+          uri: "library://album/1",
+          media_type: "album",
+        },
+      };
+      const states = Object.fromEntries(
+        ["living", "kitchen", "bedroom"].map((name, i) => [
+          "media_player." + name,
+          {
+            entity_id: "media_player." + name,
+            state: "playing",
+            attributes: {
+              friendly_name: ["Living room", "Kitchen", "Bedroom"][i],
+              supported_features: feature,
+              media_title: "Weightless",
+              media_artist: "Marconi Union",
+              media_album_name: "Ambient Transmissions",
+              media_content_id: item.uri,
+              media_duration: 480,
+              media_position: 125,
+              volume_level: 0.35,
+              group_members: [],
+              entity_picture: "/tests/browser/cover.svg",
+            },
+          },
+        ]),
+      );
+      const mediaServices = Object.fromEntries(
+        [
+          "media_play",
+          "media_pause",
+          "media_seek",
+          "media_next_track",
+          "media_previous_track",
+          "shuffle_set",
+          "repeat_set",
+          "volume_set",
+          "volume_mute",
+          "join",
+          "unjoin",
+          "clear_playlist",
+        ].map((s) => [s, {}]),
+      );
+      const extensionServices = Object.fromEntries(
+        [
+          "get_queue_items",
+          "play_queue_item",
+          "move_queue_item_up",
+          "move_queue_item_down",
+          "move_queue_item_next",
+          "remove_queue_item",
+          "get_album",
+          "get_artist",
+          "get_album_tracks",
+          "get_artist_tracks",
+        ].map((s) => [s, {}]),
+      );
+      window.hass = {
+        states,
+        services: {
+          media_player: mediaServices,
+          music_assistant: {
+            search: {},
+            get_library: {},
+            get_queue: {},
+            play_media: {},
+            transfer_queue: {},
+          },
+          button: { press: {} },
+          ...(extension ? { mass_queue: extensionServices } : {}),
+        },
+        connection: { connected: true },
+        async callService(domain, service, data, target) {
+          window.calls.push({ domain, service, data, target });
+          if (window.fail) throw Error("Speaker rejected the request");
+          if (service === "media_pause" || service === "media_play")
+            states[target.entity_id] = {
+              ...states[target.entity_id],
+              state: service === "media_pause" ? "paused" : "playing",
+            };
+          if (service === "join") {
+            const ids = [target.entity_id, ...data.group_members];
+            for (const id of ids)
+              states[id] = {
+                ...states[id],
+                attributes: { ...states[id].attributes, group_members: ids },
+              };
+          }
+          if (service === "unjoin")
+            states[target.entity_id] = {
+              ...states[target.entity_id],
+              attributes: {
+                ...states[target.entity_id].attributes,
+                group_members: [],
+              },
+            };
+          window.refresh();
+        },
+        async callWS(message) {
+          window.calls.push(message);
+          if (message.type === "config/entity_registry/get")
+            return {
+              config_entry_id: "native",
+              platform: "music_assistant",
+              device_id: "device",
+            };
+          if (message.type === "config/entity_registry/list")
+            return [
+              {
+                entity_id: "button.favorite",
+                device_id: "device",
+                config_entry_id: "native",
+                translation_key: "favorite_now_playing",
+              },
+            ];
+          if (message.type === "mass_queue/get_info")
+            return { entries: { mass_queue: "extension" } };
+          if (message.type === "media_player/browse_media")
+            return {
+              children: [
+                { ...item, title: "Album track", media_content_id: item.uri },
+              ],
+            };
+          if (message.service === "get_library")
+            return {
+              response: {
+                items: [
+                  item,
+                  {
+                    ...item,
+                    uri: "library://track/2",
+                    name: "A Walk",
+                    artists: [{ name: "Tycho" }],
+                  },
+                ],
+              },
+            };
+          if (message.service === "search")
+            return {
+              response: {
+                tracks: [{ ...item, name: "Search result" }],
+                albums: [],
+                artists: [],
+                radio: [],
+                playlists: [],
+                podcasts: [],
+                audiobooks: [],
+              },
+            };
+          if (message.service === "get_queue")
+            return {
+              response: {
+                [message.target.entity_id]: {
+                  current_item: { queue_item_id: "q1", media_item: item },
+                  next_item: {
+                    queue_item_id: "q2",
+                    media_item: { ...item, name: "A Walk" },
+                  },
+                },
+              },
+            };
+          if (message.service === "get_queue_items")
+            return {
+              response: {
+                [message.service_data.entity]: [
+                  {
+                    queue_item_id: "q1",
+                    media_title: "Weightless",
+                    media_artist: "Marconi Union",
+                    media_content_id: item.uri,
+                  },
+                  {
+                    queue_item_id: "q2",
+                    media_title: "A Walk",
+                    media_content_id: "library://track/2",
+                  },
+                ],
+              },
+            };
+          if (
+            message.service === "get_album" ||
+            message.service === "get_artist"
+          )
+            return {
+              response: {
+                ...item,
+                name: "Album details",
+                media_type: message.service.slice(4),
+                metadata: { description: "An atmospheric recording." },
+              },
+            };
+          if (message.service?.endsWith("_tracks"))
+            return {
+              response: {
+                tracks: [
+                  { media_title: "Album track", media_content_id: item.uri },
+                ],
+              },
+            };
+          return { response: {} };
+        },
+      };
+      window.refresh = () => {
+        for (const card of document.querySelectorAll("ha-music-assistant-card"))
+          card.hass = { ...window.hass, states: { ...states } };
+      };
+      window.createCard = (config = {}, slot = "slot") => {
+        const card = document.createElement("ha-music-assistant-card");
+        card.setConfig({
+          type: "custom:ha-music-assistant-card",
+          entities: [
+            "media_player.living",
+            "media_player.kitchen",
+            "media_player.bedroom",
+          ],
+          ...config,
+        });
+        card.hass = window.hass;
+        document.getElementById(slot).replaceChildren(card);
+        return card;
+      };
+      window.card = window.createCard();
+      window.ready = true;
+    </script>
+  </body>
+</html>
