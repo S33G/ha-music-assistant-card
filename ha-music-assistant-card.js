@@ -1025,22 +1025,28 @@ The MIT license applies to all non-font and non-icon files.
       <fieldset>
         <legend>Add players</legend>
         <div class="grid">
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{area:{}}}
-            .value=${this.selectedArea||void 0}
-            .label=${"Area"}
-            .required=${!1}
-            @value-changed=${V=>{this.selectedArea=V.detail.value??"",this.requestUpdate()}}
-          ></ha-selector>
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{entity:{filter:{domain:"media_player"},multiple:!0}}}
-            .value=${this.selectedPlayers}
-            .label=${"Player entities"}
-            .required=${!1}
-            @value-changed=${V=>{this.selectedPlayers=Array.isArray(V.detail.value)?V.detail.value:[],this.requestUpdate()}}
-          ></ha-selector>
+          <label class="selector-field">
+            <span>Area</span>
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${{area:{}}}
+              .value=${this.selectedArea||void 0}
+              .label=${""}
+              .required=${!1}
+              @value-changed=${V=>{this.selectedArea=V.detail.value??"",this.requestUpdate()}}
+            ></ha-selector>
+          </label>
+          <label class="selector-field">
+            <span>Player entities</span>
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${{entity:{filter:{domain:"media_player"},multiple:!0}}}
+              .value=${this.selectedPlayers}
+              .label=${""}
+              .required=${!1}
+              @value-changed=${V=>{this.selectedPlayers=Array.isArray(V.detail.value)?V.detail.value:[],this.requestUpdate()}}
+            ></ha-selector>
+          </label>
         </div>
         <p>
           Selected players take priority. Leave them empty to add every player
@@ -1154,6 +1160,7 @@ The MIT license applies to all non-font and non-icon files.
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
+      align-items: start;
     }
     label {
       display: flex;
@@ -1179,6 +1186,10 @@ The MIT license applies to all non-font and non-icon files.
       display: block;
       min-width: 0;
       width: 100%;
+    }
+    .selector-field > span {
+      display: block;
+      line-height: 1.5;
     }
     button {
       cursor: pointer;

@@ -36,6 +36,7 @@ export class MusicAssistantEditor extends LitElement {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
+      align-items: start;
     }
     label {
       display: flex;
@@ -61,6 +62,10 @@ export class MusicAssistantEditor extends LitElement {
       display: block;
       min-width: 0;
       width: 100%;
+    }
+    .selector-field > span {
+      display: block;
+      line-height: 1.5;
     }
     button {
       cursor: pointer;
@@ -227,30 +232,36 @@ export class MusicAssistantEditor extends LitElement {
       <fieldset>
         <legend>Add players</legend>
         <div class="grid">
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{ area: {} }}
-            .value=${this.selectedArea || undefined}
-            .label=${"Area"}
-            .required=${false}
-            @value-changed=${(event: CustomEvent<{ value?: string }>) => {
-              this.selectedArea = event.detail.value ?? "";
-              this.requestUpdate();
-            }}
-          ></ha-selector>
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{ entity: { filter: { domain: "media_player" }, multiple: true } }}
-            .value=${this.selectedPlayers}
-            .label=${"Player entities"}
-            .required=${false}
-            @value-changed=${(event: CustomEvent<{ value?: string[] }>) => {
-              this.selectedPlayers = Array.isArray(event.detail.value)
-                ? event.detail.value
-                : [];
-              this.requestUpdate();
-            }}
-          ></ha-selector>
+          <label class="selector-field">
+            <span>Area</span>
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${{ area: {} }}
+              .value=${this.selectedArea || undefined}
+              .label=${""}
+              .required=${false}
+              @value-changed=${(event: CustomEvent<{ value?: string }>) => {
+                this.selectedArea = event.detail.value ?? "";
+                this.requestUpdate();
+              }}
+            ></ha-selector>
+          </label>
+          <label class="selector-field">
+            <span>Player entities</span>
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${{ entity: { filter: { domain: "media_player" }, multiple: true } }}
+              .value=${this.selectedPlayers}
+              .label=${""}
+              .required=${false}
+              @value-changed=${(event: CustomEvent<{ value?: string[] }>) => {
+                this.selectedPlayers = Array.isArray(event.detail.value)
+                  ? event.detail.value
+                  : [];
+                this.requestUpdate();
+              }}
+            ></ha-selector>
+          </label>
         </div>
         <p>
           Selected players take priority. Leave them empty to add every player
